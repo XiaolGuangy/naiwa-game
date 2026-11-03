@@ -1,0 +1,24 @@
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const { pathToFileURL } = require('node:url');
+const path = require('node:path');
+(async () => {
+  const browser = await chromium.launch({...(process.env.BROWSER_PATH ? {executablePath: process.env.BROWSER_PATH} : {}), headless:true});
+  const page = await browser.newPage({viewport:{width:844,height:390},hasTouch:true,isMobile:true});
+  await page.goto(pathToFileURL(path.join(__dirname,'index.html')).href);
+  await page.evaluate(() => { document.body.classList.add('touch'); resetRun(); loadStage('hub'); G.mode='play'; updateTouchUI(); });
+  assert.equal(await page.locator('#moveZone').count(), 1, 'A swipe movement area is available');
+  const gesture = async (type,x,id=7) => page.locator('#moveZone').evaluate((el,{type,x,id}) => el.dispatchEvent(new PointerEvent(type,{pointerId:id,pointerType:'touch',clientX:x,clientY:250,bubbles:true})),{type,x,id});
+  await gesture('pointerdown',100); await gesture('pointermove',145);
+  assert.equal(await page.evaluate(() => Input.held('right')),true,'Swiping right moves right');
+  await gesture('pointermove',55);
+  assert.equal(await page.evaluate(() => Input.held('left') && !Input.held('right')),true,'Reversing direction moves left');
+  await page.locator('[data-act="jump"]').evaluate(el=>el.dispatchEvent(new PointerEvent('pointerdown',{pointerId:9,pointerType:'touch',bubbles:true})));
+  assert.equal(await page.evaluate(() => Input.held('left') && Input.held('jump')),true,'A second finger can jump while moving');
+  await page.locator('[data-act="jump"]').evaluate(el=>el.dispatchEvent(new PointerEvent('pointerup',{pointerId:9,pointerType:'touch',bubbles:true})));
+  await gesture('pointerup',55);
+  assert.equal(await page.evaluate(() => !Input.held('left') && !Input.held('right')),true,'Release stops movement');
+  const sizes = await page.locator('#padR .tb').evaluateAll(buttons => buttons.map(b => {const r=b.getBoundingClientRect();return [r.width,r.height]}));
+  assert.equal(sizes.length,5); assert.ok(sizes.every(([w,h])=>w>=44&&h>=44),'All skill targets meet 44px');
+  await browser.close(); console.log('Mobile controls: all checks passed');
+})().catch(e=>{console.error(e);process.exit(1)});
